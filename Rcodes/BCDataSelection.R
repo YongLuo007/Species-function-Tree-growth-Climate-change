@@ -1,6 +1,6 @@
 # get the BC data
 rm(list = ls())
-library(data.table);library(ggplot2)
+library(data.table);library(ggplot2);library(gridExtra)
 workPath <- "~/Github/Species-function-Tree-growth-Climate-change"
 BCPlotInfor <- fread(file.path(workPath,"data", "BC", "StandInformation.csv"))
 print(length(unique(BCPlotInfor$SAMP_ID)))
@@ -169,14 +169,90 @@ treesInSelctedPlots[, ':='(DistanceTime = length(unique(y_coord))),
 unique(treesInSelctedPlots$DistanceTime) # 1
 set(treesInSelctedPlots, , c("minDistance", "maxDistance", "DistanceTime"), NULL)
 
-mappingCheck <- treesInSelctedPlots[,.(SAMP_ID, plot_no, uniTreeID, 
+
+unique(treesInSelctedPlots$sub_plot_tree)# "N" "Y" "" 
+#check by plot level
+treesInSelctedPlots[,uniPlotID:=paste(SAMP_ID, "_", plot_no, sep = "")]
+treesInSelctedPlots[, ':='(subPlotLength = length(unique(sub_plot_tree)),
+                           subPlot = paste(sort(unique(sub_plot_tree)), collapse = "+")),
+                    by = uniPlotID]
+unique(treesInSelctedPlots$subPlotLength)
+
+mappingCheck <- treesInSelctedPlots[,.(SAMP_ID, plot_no, sub_plot_tree, uniTreeID, 
                                        x_coord, y_coord)]
+
 mappingCheck <- unique(mappingCheck, by = "uniTreeID")
 
-a <- ggplot(data = mappingCheck, aes(x = x_coord, y = y_coord))+
-  geom_point()
+mappingCheck[, subplottrees:=factor(sub_plot_tree, levels = c("N", "Y", ""),
+                                    labels = c("In main plot", "In sub plot", "Unknown"))]
+points360 <- seq(0, 2 * pi, length.out = 360)
+treeplot <- Polygons(list(Polygon(cbind(5.64 * sin(points360),
+                                         5.64 * cos(points360)))),
+                      ID = 1)
+treeplot <- SpatialPolygons(list(treeplot))
+treeplot <- fortify(treeplot, region = "ID") %>% data.table
+
+ecologicalplot <- Polygons(list(Polygon(cbind(10 * sin(points360),
+                                        10 * cos(points360)))),
+                     ID = 1)
+ecologicalplot <- SpatialPolygons(list(ecologicalplot))
+ecologicalplot <- fortify(ecologicalplot, region = "ID") %>% data.table
+
+successionplot <- Polygons(list(Polygon(cbind(25 * sin(points360),
+                                              25 * cos(points360)))),
+                           ID = 1)
+successionplot <- SpatialPolygons(list(successionplot))
+successionplot <- fortify(successionplot, region = "ID") %>% data.table
+
+a <- ggplot(data = mappingCheck, 
+            aes(x = x_coord, y = y_coord))+
+  geom_point(data = mappingCheck[subplottrees == "In main plot",],
+             aes(col = subplottrees))+
+  geom_point(data = mappingCheck[subplottrees == "In sub plot",],
+             aes(col = subplottrees))+
+  geom_point(data = mappingCheck[subplottrees == "Unknown",],
+             aes(col = subplottrees))+
+  geom_path(data = treeplot, aes(x = long, y = lat, group = group), col = "blue", linetype = 1)+
+  geom_path(data = ecologicalplot, aes(x = long, y = lat, group = group), 
+            col = "blue", linetype = 2)+
+  geom_path(data = successionplot, aes(x = long, y = lat, group = group), 
+            col = "blue", linetype = 3)+
+  scale_color_manual(name = "Trees location", values = c("gray", "red", "green"))+
+  scale_x_continuous(name = "x", limits = c(-60, 60))+
+  scale_y_continuous(name = "y", limits = c(-60, 60))+
+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        panel.background = element_blank(),
+        legend.background = element_rect(colour = "black"),
+        legend.position = c(0.9, 0.9))
+
+ggsave(file.path(workPath, "tableFigures", "alltreemapping.png"),
+       a, height = 9, width = 9)
 
 print(range(treesInSelctedPlots$dbh))
 # 4.0 94.3 which were consistent with VRI sampling protocal (trees were defined bigger than 4 cm)
 
+treesInSelctedPlots[, NumberOfPlot:=length(unique(plot_no)), by = SAMP_ID]
+mutiplesubplots <- unique(treesInSelctedPlots[NumberOfPlot>1,]$SAMP_ID)
+allMultiPlots <- list()
+for(i in 1:length(mutiplesubplots)){
+  allMultiPlots[[i]] <- ggplot(data = mappingCheck[SAMP_ID == mutiplesubplots[i],], 
+            aes(x = x_coord, y = y_coord))+
+  geom_point(aes(col = plot_no))+
+  scale_x_continuous(name = "x")+
+  scale_y_continuous(name = "y")+
+    annotate("text", x = -Inf, y = Inf, label = mutiplesubplots[i], hjust = -0.5,
+             vjust = 1.5)+
+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        panel.background = element_blank(),
+        legend.position = "none")
+}
+
+plotlayout <- rbind(c(1,NA), c(2, 3), c(4, 5))
+b <- grid.arrange(allMultiPlots[[1]], allMultiPlots[[2]], allMultiPlots[[3]],
+                  allMultiPlots[[4]],allMultiPlots[[5]],
+                  layout_matrix = plotlayout)
+ggsave(file.path(workPath, "tableFigures", "sampleIDhadsubplots.png"),
+       b, height = 10, width = 7)
 
