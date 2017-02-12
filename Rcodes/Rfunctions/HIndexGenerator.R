@@ -58,20 +58,19 @@ setMethod(
     # data[, ':='(coordX = sin(Angle*pi/180)*Distance,
     #             coordY = cos(Angle*pi/180)*Distance)]
     
-    browser()
     years <- sort(unique(data$Year))
     for(indiyear in years){
       yeardata <- data[Year == indiyear,]
       yeardata[,temptreeno:=1:length(coordX), by = PlotNumber]
       alldata[[paste(indiyear)]] <- yeardata
     }
-     browser()
-     a <- mainFunc(yeardata = alldata[[1]], sizeIndex = sizeIndex,
-                   maxRadius = maxRadius, 
-                   distanceWeight = distanceWeight,
-                   sizeWeight = sizeWeight,
-                   assymetricScale = assymetricScale)
-     browser()
+     # browser()
+     # a <- mainFunc(yeardata = alldata[[1]], sizeIndex = sizeIndex,
+     #               maxRadius = maxRadius, 
+     #               distanceWeight = distanceWeight,
+     #               sizeWeight = sizeWeight,
+     #               assymetricScale = assymetricScale)
+     # browser()
     newEnv <- new.env()
     newEnv$alldata <- alldata
     newEnv$sizeIndex <- sizeIndex
@@ -83,10 +82,9 @@ setMethod(
     cl <- parallel::makeCluster(parallel::detectCores()-1)
     parallel::clusterExport(cl, c("alldata", "sizeIndex", "maxRadius", 
                                   "mainFunc", "distanceWeight", "sizeWeight",
-                                  "assymetricScale", "myFunForOverlapCircle",
-                                  "myFunForOverlapTrangle"), envir = newEnv)
-    parallel::clusterExport(cl, c("data.table", "setkey", "%>%", "dcast", "setcolorder", "unique",
-                                  "intersect", "Polygons", "Polygon", "SpatialPolygons", "gArea"))
+                                  "assymetricScale"), envir = newEnv)
+    parallel::clusterExport(cl, c("data.table", "setkey", "%>%", "dcast", 
+                                  "setcolorder", "unique"))
     alloutput <- parallel::parLapply(cl, alldata, function(x) mainFunc(yeardata = x, sizeIndex = sizeIndex,
                                                                        maxRadius = maxRadius, 
                                                                        distanceWeight = distanceWeight,
@@ -197,31 +195,4 @@ mainFunc <- function(yeardata, sizeIndex, maxRadius, distanceWeight,
                   value.var = c("H", "IntraH", "InterH"))
   setcolorder(output, c("PlotNumber", "TreeNumber", "Year", competitionNames))
   return(output)
-}
-
-myFunForOverlapCircle <- function(locX, locY, plotSize, maxRadius){
-  points360 <- seq(0, 2 * pi, length.out = 360)
-  treecircle <- Polygons(list(Polygon(cbind(locX + maxRadius * sin(points360),
-                                            locY + maxRadius * cos(points360)))),
-                         ID = 1)
-  treecircle <- SpatialPolygons(list(treecircle))
-  
-  plotcircle <- Polygons(list(Polygon(cbind(sqrt(plotSize/pi) * sin(points360),
-                                            sqrt(plotSize/pi) * cos(points360)))),
-                         ID = 1)
-  plotcircle <- SpatialPolygons(list(plotcircle))
-  overlapArea <- raster::intersect(treecircle, plotcircle)
-  return(rgeos::gArea(overlapArea))
-}
-
-
-myFunForOverlapTrangle <- function(locX, locY, plotLength, plotWidth, maxRadius){
-  points360 <- seq(0, 2 * pi, length.out = 360)
-  treecircle <- Polygons(list(Polygon(cbind(locX + maxRadius * sin(points360),
-                                            locY + maxRadius * cos(points360)))),
-                         ID = 1)
-  treecircle <- SpatialPolygons(list(treecircle))
-  overlapArea <- crop(treecircle, extent(-plotLength/2, plotLength/2,
-                                         -plotWidth/2, plotWidth/2))
-  return(rgeos::gArea(overlapArea))
 }

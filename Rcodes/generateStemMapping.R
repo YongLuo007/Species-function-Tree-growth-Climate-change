@@ -69,13 +69,19 @@ unique(unselectedPlots_fixed$areaLength) #
 
 unselectedPlots_fixed <- unselectedPlots_fixed[no_meas>=2,]
 length(unique(unselectedPlots_fixed$SAMP_ID)) # 686
-oneplot <- unique(unselectedPlots_fixed$SAMP_ID)[1]
-oneplotInFor <- unselectedPlots[SAMP_ID == oneplot, ]
+
+unselectedPlots_fixed <- unselectedPlots_fixed[!is.na(utm_zone),]
+length(unique(unselectedPlots_fixed$SAMP_ID)) # 590
+
+
+oneplot <- unique(selectedPlots$SAMP_ID)[1]
+oneplotInFor <- selectedPlots[SAMP_ID == oneplot, ]
 oneplotInForSize <- unique(oneplotInFor$area_pm)*10000
 BCtreedata <- fread(file.path(workPath,"data",
                               "BC", "Trees.csv"))
 
-bctreedataWithoutMapping <- BCtreedata[SAMP_ID %in% unique(unselectedPlots_fixed$SAMP_ID)]
+# bctreedataWithoutMapping <- BCtreedata[SAMP_ID %in% unique(unselectedPlots_fixed$SAMP_ID)]
+bctreedataWithoutMapping <- BCtreedata[SAMP_ID == oneplot,]
 bctreedataWithoutMapping[, uniTreeID:=paste(SAMP_ID, tree_no, sep = "")]
 bctreedataWithoutMapping <- bctreedataWithoutMapping[ld != "DU",]
 
@@ -148,10 +154,10 @@ bctreedataWithoutMapping$biomass <- biomassCalculation(species = bctreedataWitho
 
 
 
-oneplotonecensusdata <- BCtreedata[SAMP_ID == oneplot,.(SAMP_ID, dbh, meas_yr, tree_no)]
+# oneplotonecensusdata <- BCtreedata[SAMP_ID == oneplot,.(SAMP_ID, dbh, meas_yr, tree_no)]
 
 
-oneplotonecensusdata <- oneplotonecensusdata[meas_yr == 1991,]
+oneplotonecensusdata <- bctreedataWithoutMapping[meas_yr == 1971,]
 
 
 radiusOne <- sqrt(oneplotInForSize/pi)
