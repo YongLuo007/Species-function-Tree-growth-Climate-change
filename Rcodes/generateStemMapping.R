@@ -8,11 +8,9 @@ BCPlotInfor <- fread(file.path(workPath,"data", "BC", "StandInformation.csv"))
 print(length(unique(BCPlotInfor$SAMP_ID)))
 # 3793 plots totally
 
-
 ########################
 # PLOT LEVEL SELECTION #
 ########################
-
 
 # select the plots that regenerated from fire or natural
 print(unique(BCPlotInfor$stnd_org))
@@ -28,20 +26,29 @@ selectedPlots <- selectedPlots[treatment == "UNTREATED",]
 print(length(unique(selectedPlots$SAMP_ID)))
 # 1526 plots left
 
-
-# select the plot that trees were mapped
-print(unique(selectedPlots$stem_mapped_ind))
-# "N" "Y" "" 
-selectedPlots <- selectedPlots[stem_mapped_ind == "Y",]
-print(length(unique(selectedPlots$SAMP_ID)))
-# 198 plots left
+selectedPlots <- selectedPlots[dbhlimit_tag<=4,]
+print(length(unique(selectedPlots$SAMP_ID))) # 430
+# # select the plot that trees were mapped
+# print(unique(selectedPlots$stem_mapped_ind))
+# # "N" "Y" "" 
+# selectedPlots <- selectedPlots[stem_mapped_ind == "Y",]
+# print(length(unique(selectedPlots$SAMP_ID)))
+# # 198 plots left
 
 # select the plot that had been measured at least for three times
-print(sort(unique(selectedPlots$no_meas)))
+selectedPlots[, Meas_time:=length(unique(meas_yr)), by = SAMP_ID]
+
+print(sort(unique(selectedPlots$Meas_time)))
 # 1  2  3  4  8  9 10 12
-selectedPlots <- selectedPlots[no_meas>=3,]
+selectedPlots <- selectedPlots[Meas_time>=3,]
 print(length(unique(selectedPlots$SAMP_ID)))
-# 139 plots left
+# 304 plots left
+
+
+selectedPlots[,locTime:=length(unique(utm_zone)), by = SAMP_ID]
+unique(selectedPlots$locTime) #1
+selectedPlots <- selectedPlots[!is.na(utm_zone),]
+print(length(unique(selectedPlots$SAMP_ID))) # 225
 
 unique(selectedPlots$sampletype) #  "G" "R" "I"
 ########################
@@ -50,9 +57,6 @@ unique(selectedPlots$sampletype) #  "G" "R" "I"
 
 # select the plots that had location information
 
-selectedPlots[,locTime:=length(unique(utm_zone)), by = SAMP_ID]
-unique(selectedPlots$locTime) #1
-selectedPlots <- selectedPlots[!is.na(utm_zone),]
 
 unselectedPlots <- BCPlotInfor[!(SAMP_ID %in% unique(selectedPlots$SAMP_ID)),]
 

@@ -10,17 +10,36 @@ if(as.character(Sys.info()[6]) == "yonluo"){
 inputDataOrg <- fread(file.path(workPath, "data", "forcompetitionIndex.csv"))
 
 plotinfor <- fread(file.path(workPath, "data", "BCselectedPlot.csv"))
-plotinforNosubPlot <- plotinfor[no_plots == 1 & sampletype == "G"]
-plotinforNosubPlot <- unique(plotinforNosubPlot[,.(SAMP_ID, plotSize = area_pm*10000)],
-                             by = "SAMP_ID")
-inputData <- setkey(inputDataOrg, SAMP_ID)[setkey(plotinforNosubPlot, SAMP_ID),
+plotinforNosubPlot <- plotinfor[SampeType == "G" & StemMapped == "Y"]
+plotinforNosubPlot <- unique(plotinforNosubPlot[,.(PlotNumber, plotSize = PlotSize*10000)],
+                             by = "PlotNumber")
+inputData <- setkey(inputDataOrg, PlotNumber)[setkey(plotinforNosubPlot, PlotNumber),
                                         nomatch = 0]
 inputData[, plotShape:="circle"]
 
-setnames(inputData, c("stem_map_bearing", "stem_map_slope_distance", "SAMP_ID", "uniTreeID",
-                      "IniBiomass", "species"),
-         c("Angle", "Distance", "PlotNumber", "TreeNumber", "Biomass", "Species"))
+setnames(inputData, c("IniYear", "IniBiomass", "species"),
+         c("Year", "Biomass", "Species"))
 
+inputData[, ':='(minAngle = min(coordX),
+                           maxAngle = max(coordX),
+                           angleTime = length(unique(coordX))),
+                    by = uniTreeID]
+
+
+print(unique(inputData$angleTime)) # 1 2
+
+noMappingTrees <- unique(inputData[is.na(minAngle) & angleTime == 1,]$uniTreeID)
+print(length(noMappingTrees)) # 20 trees
+# remove these trees in from the dataset
+inputData <- inputData[!(uniTreeID %in% noMappingTrees), ]
+
+
+# check tree had different angle but all had values
+print(setkey(inputData[minAngle != maxAngle,.(uniTreeID, Year, 
+                                                        coordX, coordY)],
+             uniTreeID, Year))
+
+# 0 row
 source(file.path(workPath, "Rcodes", "Rfunctions", "HeghyiCICalculationModified.R"))
 
 sizeWeightList <- list("sizeWeight1" = seq(0, 2, by = 0.1),
@@ -54,7 +73,8 @@ for(k in 1:5){
       setnames(newCIdata, indicombweight, c("H", "IntraH", "InterH"))
       newCIdata <- newCIdata[,.(uniTreeID, IniYear, H, IntraH, InterH)]
       write.csv(newCIdata, file.path(workPath, "data", "AllCompetitioinData_BC",
-                                     paste("CompetitionData_DW", j, "_SW", i, ".csv", sep = "")))
+                                     paste("CompetitionData_DW", j, "_SW", i, ".csv", sep = "")),
+                row.names = FALSE)
     }
   }
 }

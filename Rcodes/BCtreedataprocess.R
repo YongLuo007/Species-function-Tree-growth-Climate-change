@@ -3,38 +3,50 @@ library(data.table);library(ggplot2);library(gridExtra);library(raster)
 library(dplyr); library(SpaDES)
 workPath <- "~/Github/Species-function-Tree-growth-Climate-change"
 allPSP <- fread(file.path(workPath, "data", "BCtrees.csv"))
-unique(allPSP$ld)
+unique(allPSP$LiveDead)
 # "L"  "I"  "DU" "DP" "V"  "C"
-cutPlots <- unique(allPSP[ld == "C", ]$SAMP_ID)
+cutPlots <- unique(allPSP[LiveDead == "C", ]$PlotNumber)
 print(cutPlots)
-# "70030 G000009" had cut trees, the plot should be removed
-allPSP <- allPSP[!(SAMP_ID %in% cutPlots), ]
+# "59071 R000108" "70030 G000008" had cut trees, the plot should be removed
+allPSP <- allPSP[!(PlotNumber %in% cutPlots), ]
 
 # check whether the dead status of a tree was the last observation of that tree
-deadtrees <- allPSP[ld == "DU",][, .(firstDeadYear=min(meas_yr)), by = uniTreeID]
-livetrees <- allPSP[ld != "DU", ][,.(lastLiveYear = max(meas_yr)), by = uniTreeID]
+deadtrees <- allPSP[LiveDead == "DU",][, .(firstDeadYear=min(MeasureYear)), by = uniTreeID]
+livetrees <- allPSP[LiveDead != "DU", ][,.(lastLiveYear = max(MeasureYear)), by = uniTreeID]
 deadtrees <- setkey(deadtrees, uniTreeID)[setkey(livetrees, uniTreeID),
                                           nomatch = 0]
 deadBeforeLiveTrees <- deadtrees[lastLiveYear >= firstDeadYear, ]$uniTreeID
-print(length(deadBeforeLiveTrees)) # 0 good
+print(length(deadBeforeLiveTrees)) # 2 good
+
+deadtrees[uniTreeID == deadBeforeLiveTrees[1]]
+print(allPSP[uniTreeID == deadBeforeLiveTrees[1],.(MeasureYear, LiveDead)])
+#    MeasureYear LiveDead
+# 1:        1996       DU
+# 2:        1986        L
+# 3:        2007       DP
+# 4:        2013       DP
+allPSP[uniTreeID == deadBeforeLiveTrees[1], LiveDead:="DP"]
+
+print(allPSP[uniTreeID == deadBeforeLiveTrees[2],.(MeasureYear, DBH, LiveDead)][order(MeasureYear),])
+allPSP[uniTreeID == deadBeforeLiveTrees[2], LiveDead:="DP"]
 
 # select live trees
-livetrees <- allPSP[ld != "DU", ]
+livetrees <- allPSP[LiveDead != "DU", ]
 
 # check whether there was missing measurement
-range(livetrees$meas_yr) # 1926 to 2013
+range(livetrees$MeasureYear) # 1926 to 2013
 # hist(livetrees$meas_yr)
-allplots <- unique(livetrees$uniPlotID)
+allplots <- unique(livetrees$PlotNumber)
 
 
 
 myFunction <- function(plotdata){
   missingMeasureTrees <- NULL
-  plotCensus <- sort(unique(plotdata$meas_yr))
+  plotCensus <- sort(unique(plotdata$MeasureYear))
   treeIDs <- unique(plotdata$uniTreeID)
   for(inditree in treeIDs){
     treedata <- plotdata[uniTreeID == inditree,]
-    treecensus <- sort(treedata$meas_yr)
+    treecensus <- sort(treedata$MeasureYear)
     if(length(treecensus) != length(plotCensus[plotCensus <= max(treecensus) &
                                                plotCensus >= min(treecensus)])){
       missingMeasureTrees <- c(missingMeasureTrees, inditree)
@@ -45,7 +57,7 @@ myFunction <- function(plotdata){
 
 livetreesList <- list()
 for(indiplot in allplots){
-  livetreesList[[indiplot]] <- livetrees[uniPlotID == indiplot]
+  livetreesList[[indiplot]] <- livetrees[PlotNumber == indiplot]
 }
 
 cl <- parallel::makeCluster(parallel::detectCores()-1)
@@ -57,11 +69,11 @@ allmissingMearsureTrees <- unlist(allmissingMearsureTrees)
 length(allmissingMearsureTrees) # 0 good
 
 # species inspection
-livetrees[, speciesLength:=length(unique(species)), by = uniTreeID]
+livetrees[, speciesLength:=length(unique(Species)), by = uniTreeID]
 unique(livetrees$speciesLength) # 1 good
 livetrees[, speciesLength:=NULL]
-livetrees[, orgSpecies:=species]
-livetrees[, species:=NA]
+livetrees[, orgSpecies:=Species]
+livetrees[, species:=NULL]
 livetrees[orgSpecies == "SB", species := "black spruce"]
 livetrees[orgSpecies == "LT", species := "tamarack larch"]
 livetrees[orgSpecies == "SW", species := "white spruce"]
@@ -120,62 +132,67 @@ nrow(livetrees[is.na(species),]) # 0 good
 # assign biomass
 source(file.path(workPath, "Rcodes",  "Rfunctions", "biomassCalculation.R"))
 livetrees$biomass <- biomassCalculation(species = livetrees$species,
-                                        DBH = livetrees$dbh,
+                                        DBH = livetrees$DBH,
                                         paperSource = "Ung2008")
 
 
 # manipulate live tree data
-livetrees <- livetrees[order(uniTreeID, meas_yr),]
-setnames(livetrees, c("meas_yr", "dbh", "biomass"), c("Year", "IniDBH", "IniBiomass"))
+livetrees <- livetrees[order(uniTreeID, MeasureYear),]
+setnames(livetrees, c("MeasureYear", "DBH", "biomass"), c("IniYear", "IniDBH", "IniBiomass"))
 livetrees <- livetrees[,c("FinYear", "FinDBH", "FinBiomass", "tempuniTreeID") 
-                 := data.table::shift(x = livetrees[,.(Year, IniDBH, IniBiomass, uniTreeID)],
+                 := data.table::shift(x = livetrees[,.(IniYear, IniDBH, IniBiomass, uniTreeID)],
                                       n = 1, fill = NA, type = "lead", give.names = FALSE)]
 
 livetrees <- livetrees[tempuniTreeID == uniTreeID,][,tempuniTreeID := NULL]
-livetrees <- livetrees[Year != FinYear,]
-livetrees[, measInterval:=FinYear-Year]
+livetrees <- livetrees[IniYear != FinYear,]
+livetrees[, measInterval:=FinYear-IniYear]
 range(livetrees$measInterval) # 2 to 35 years
+
+
+
 livetrees[, BiomassGR:=(FinBiomass-IniBiomass)/measInterval]
 
-plotCensusMinDBH <- livetrees[,.(MinDBH = min(IniDBH)), by = c("uniPlotID", "Year")]
+plotCensusMinDBH <- livetrees[,.(MinDBH = min(IniDBH)), by = c("PlotNumber", "IniYear")]
 
-livetrees91 <- livetrees[IniDBH>=9.1,]
-livetrees91[, plotMeasureTime:=length(unique(Year)), by = uniPlotID]
-livetrees91[, treeMeasureTime:=length(unique(Year)), by = uniTreeID]
+livetrees4 <- livetrees[IniDBH>=4,]
+livetrees4[, plotMeasureTime:=length(unique(IniYear)), by = PlotNumber]
+livetrees4[, treeMeasureTime:=length(unique(IniYear)), by = PlotNumber]
 
-livetrees91[, allCensusLiveTree:="no"]
-livetrees91[plotMeasureTime == treeMeasureTime, allCensusLiveTree := "yes"]
+livetrees4[, allCensusLiveTree:="no"]
+livetrees4[plotMeasureTime == treeMeasureTime, allCensusLiveTree := "yes"]
 
-livetrees91[, treeMinGR:=min(BiomassGR), by = uniTreeID]
+livetrees4[, treeMinGR:=min(BiomassGR), by = uniTreeID]
 
-livetrees91[,positiveGrowthTree:="no"]
-livetrees91[treeMinGR>0, positiveGrowthTree := "yes"]
+livetrees4[,positiveGrowthTree:="no"]
+livetrees4[treeMinGR>0, positiveGrowthTree := "yes"]
 
-allcensuspositive91 <- livetrees91[allCensusLiveTree == "yes" & 
+allcensuspositive4 <- livetrees4[allCensusLiveTree == "yes" & 
                                      positiveGrowthTree == "yes",]
-length(unique(allcensuspositive91$uniTreeID)) # 11606
-length(unique(allcensuspositive91$uniPlotID)) # 132
+length(unique(allcensuspositive4$uniTreeID)) # 32108
+length(unique(allcensuspositive4$PlotNumber)) # 213
 
-write.csv(livetrees91, file.path(workPath, "data", "forcompetitionIndex.csv"),
+write.csv(livetrees4, file.path(workPath, "data", "forcompetitionIndex.csv"),
           row.names = FALSE)
 
-write.csv(livetrees91, file.path(workPath, "data", "finalBCdata.csv"), 
+write.csv(livetrees4, file.path(workPath, "data", "finalBCdata.csv"), 
           row.names = FALSE)
 
-treeinfor <- unique(allcensuspositive91, by = "uniTreeID")
+treeinfor <- unique(allcensuspositive4, by = "uniTreeID")
 speciesinfor <- treeinfor[,.(NumberOfTree=length(FinDBH)), by = species]
 
 #            species NumberOfTree
-# 1:    white spruce         1761
-# 2:      alpine fir          266
-# 3:  lodgepole pine         5720
-# 4:             fir          155
-# 5:    black spruce         1259
-# 6:     white birch          209
-# 7: western hemlock            1
-# 8: trembling aspen         2130
-# 9:   balsam poplar          103
-# 10:     douglas-fir            2
+# 1:  lodgepole pine         8747
+# 2:    white spruce         8201
+# 3:      alpine fir         1709
+# 4:          willow          448
+# 5:   balsam poplar           50
+# 6:     white birch         1406
+# 7:             fir         1491
+# 8:    black spruce         2581
+# 9: western hemlock            4
+# 10:     douglas-fir          278
+# 11: trembling aspen         7192
+# 12:       red alder            1
 
 
 
