@@ -5,6 +5,13 @@
 # Session Data files
 .RData
 
+# rds and csv files
+*.rds
+*.csv
+*.rdata
+
+
+
 # Example code in package build process
 *-Ex.R
 
@@ -33,3 +40,5 @@ vignettes/*.pdf
 *.knit.md
 MS/
 data/
+.Rproj.user
+
