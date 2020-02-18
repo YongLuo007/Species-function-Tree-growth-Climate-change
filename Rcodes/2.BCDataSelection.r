@@ -28,6 +28,8 @@ sampledata_gys <- sampledata_gys[,.(SAMP_ID, EST_YR = ESTABLISHMENT_YR,
                                     SOIL_MOIST_REGIME_RANGE, SOIL_MOIST_REGIME_SUB_DOM,
                                     SOIL_NUTRIENT_REGIME_SINGLE,
                                     TREATED_STAND_PLANTATION_YR)]
+length(sampledata_gys)
+
 
 
 sampledata_rem <- readRDS(file.path(rem_data_path, "samples.rds")) %>%
@@ -56,6 +58,17 @@ nrow(sampledata_rem) == length(unique(sampledata_rem$SAMP_ID))
 sampledata_rem_add <- sampledata_rem[!(SAMP_ID %in% unique(sampledata_gys$SAMP_ID)),]
 
 sampledata <- rbind(sampledata_gys, sampledata_rem_add)
+
+sampledata_psp <- sampledata[SAMPLE_TYPE_CODE %in% c("G", "R"),]
+length(unique(sampledata_psp$SAMP_ID))
+
+
+sampledata_psp[, EST_YR := as.numeric(EST_YR)]
+range(sampledata_psp[!(is.na(EST_YR) | EST_YR == 0), ]$EST_YR, na.rm = TRUE)
+
+range(sampledata_psp[!(EST_YR %in% c(NA, 19, 0)),]$EST_YR)
+
+
 
 saveRDS(sampledata, file.path(".", "data", "samples_all.rds"))
 
@@ -147,7 +160,6 @@ sample_meas[MEAS_YR > 2018,]
 sample_meas[SAMP_ID == "63036 G000007" & MEAS_YR == 2103,
             MEAS_YR := 2013]
 saveRDS(sample_meas, file.path(output_datapath, "samples_measure_all.rds"))
-
 
 
 plotdata <- read_sas(file.path(gys_data_path, "plot.sas7bdat")) %>%
@@ -284,9 +296,6 @@ nrow(treemeasdata_rem) == nrow(unique(treemeasdata_rem, by = c("SAMP_ID", "PLOT_
 treemeasdata_rem <- treemeasdata_rem[order(SAMP_ID, PLOT_NO, TREE_NO, MEAS_NO, -MEAS_HT),]
 treemeasdata_rem <- unique(treemeasdata_rem,
                            by = c("SAMP_ID", "PLOT_NO", "TREE_NO", "MEAS_NO"))
-
-
-
 
 
 

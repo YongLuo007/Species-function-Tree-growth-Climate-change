@@ -308,6 +308,7 @@ samples_tree_meas <- rbindlist(list(samples_tree_meas, samples_tree_meas_ingr),
 samples_tree_meas <- samples_tree_meas[order(SAMP_ID, PLOT_NO, TREE_NO, MEAS_YR_INI),]
 
 
+
 #########################
 ## summarise at stand level
 #########################
@@ -378,6 +379,57 @@ plots <- merge(plots, sample_age,
                by = "SAMP_ID",
                all.x = TRUE)
 plots[, AREA_PM := NULL]
+
+sample_loc <- samples_org[,.(SAMP_ID, UTM_ZONE, UTM_EASTING, UTM_NORTHING,
+                             UTM_ZONE_GYS, UTM_EASTING_GYS, UTM_NORTHING_GYS,
+                             UTM_ZONE_RECON, UTM_EASTING_RECON, UTM_NORTHING_RECON,
+                             ASPECT, SLOPE, SL_POS, ELEV)]
+sample_loc[, ':='(hasloc_utm = TRUE,
+                  hasloc_gys = TRUE,
+                  hasloc_recon = TRUE)]
+
+sample_loc[is.na(UTM_ZONE) | is.na(UTM_EASTING) | is.na(UTM_NORTHING),
+           hasloc_utm := FALSE]
+
+sample_loc[is.na(UTM_ZONE_GYS) | is.na(UTM_EASTING_GYS) | is.na(UTM_NORTHING_GYS),
+           hasloc_gys := FALSE]
+
+sample_loc[is.na(UTM_ZONE_RECON) | is.na(UTM_EASTING_RECON) | is.na(UTM_NORTHING_RECON),
+           hasloc_recon := FALSE]
+
+sample_loc <- sample_loc[hasloc_utm == TRUE |
+                           hasloc_gys == TRUE |
+                           hasloc_recon == TRUE,]
+
+
+
+
+
+range(sample_loc$UTM_ZONE)
+range(sample_loc$UTM_EASTING)
+range(sample_loc$UTM_NORTHING)
+
+sample_loc[, ':='(zonedif = max(UTM_ZONE) - min(UTM_ZONE),
+                  eastdif = max(UTM_EASTING) - min(UTM_EASTING),
+                  northdif = max(UTM_NORTHING) - min(UTM_NORTHING)),
+           by = "SAMP_ID"]
+range(sample_loc$zonedif, na.rm = TRUE)
+range(sample_loc$eastdif, na.rm = TRUE)
+range(sample_loc$northdif, na.rm = TRUE)
+
+
+sample_loc[, goodloc := FALSE]
+
+sample_loc[eastdif == 0 & northdif == 0,
+           goodloc := TRUE]
+sample_loc <- unique(sample_loc[goodloc == TRUE,
+                                .(SAMP_ID, UTM_ZONE, UTM_EASTING, UTM_NORTHING)],
+                     by = "SAMP_ID")
+
+plots <- merge(plots, sample_loc,
+               by = "SAMP_ID",
+               all.x = TRUE)
+
 
 
 saveRDS(plots, file.path(".", "data", "plots_final.rds"))
@@ -453,35 +505,9 @@ samples_stand_meas[, samp_meas := paste0(SAMP_ID, "_", MEAS_YR_INI, "_", MEAS_YR
 samples_stand_meas <- samples_stand_meas[samp_meas %in% samples_meas$samp_meas,]
 
 
-
-## select interval less than 20 years
-range(samples_stand_meas$MEAS_INTERVAL)
-# 1 44
-samples_stand_meas <- samples_stand_meas[MEAS_INTERVAL <= 20,]
-
-## measured at least three times
-samples_stand_meas[, meas_times := length(plot_area),
-                   by = c("SAMP_ID", "PLOT_NO")]
-samples_stand_meas <- samples_stand_meas[meas_times >= 2,]
-
-
-## no of trees at first measurement is more than 50 trees
-samples_stand_meas[, minyear := min(MEAS_YR_INI),
-                   by = c("SAMP_ID", "PLOT_NO")]
-samples_stand_meas[MEAS_YR_INI == minyear, 
-                   notree_first := NoTree_INI]
-samples_stand_meas[, notree_first := max(notree_first, na.rm = TRUE),
-                   by = c("SAMP_ID", "PLOT_NO")]
-samples_stand_meas <- samples_stand_meas[notree_first >= 50, ]
-samples_stand_meas[,':='(meas_times = NULL,
-                         minyear = NULL,
-                         notree_first = NULL)]
-
 ## select the plots that have plot area
-
 samples_without_plot_area <- unique(samples_stand_meas[is.na(plot_area),.(SAMP_ID, PLOT_NO)])
 samples_stand_meas <- samples_stand_meas[!is.na(plot_area),]
-
 
 
 ## scale up to stand level, by dividing the plot area, 
@@ -505,6 +531,42 @@ samples_stand_meas[, SA_est := min(SA),
 samples_stand_meas <- samples_stand_meas[SA_est > 0, ]
 range(samples_stand_meas$SA_est)
 
+## remove the samples without utm coordinates
+samples_stand_meas <- samples_stand_meas[!is.na(UTM_ZONE), ]
+
+## select samples in BC province map
+library(bcmaps)
+library(raster)
+library(sp)
+stand_selected_loc <- unique(samples_stand_meas[,.(SAMP_ID, UTM_ZONE, UTM_EASTING, UTM_NORTHING)],
+                             by = "SAMP_ID")
+stand_loc_bcAlbers_map <- UTM_Convertor(point_ID = stand_selected_loc$SAMP_ID,
+                                        zone = stand_selected_loc$UTM_ZONE,
+                                        easting = stand_selected_loc$UTM_EASTING,
+                                        northing = stand_selected_loc$UTM_NORTHING)
+bcbackground <- bc_bound(class = "sp")
+
+
+stand_loc_inBC <- raster::intersect(stand_loc_bcAlbers_map,
+                                    bcbackground)
+
+samples_stand_meas <- samples_stand_meas[SAMP_ID %in% stand_loc_inBC@data$point_ID,]
+stand_selected_loc <- unique(samples_stand_meas[,.(SAMP_ID, UTM_ZONE, 
+                                                   UTM_EASTING, UTM_NORTHING, 
+                                                   Elevation = PLOT_ELEVATION)],
+                             by = "SAMP_ID")
+stand_loc_longlat <- UTM_Convertor(point_ID = stand_selected_loc$SAMP_ID,
+                                        zone = stand_selected_loc$UTM_ZONE,
+                                        easting = stand_selected_loc$UTM_EASTING,
+                                        northing = stand_selected_loc$UTM_NORTHING,
+                                   CRS_To = "+proj=longlat +datum=WGS84",
+                                   class = "table")
+setnames(stand_loc_longlat, "point_ID", "SAMP_ID")
+
+stand_loc_longlat <- merge(stand_loc_longlat, 
+                           stand_selected_loc[,.(SAMP_ID, Elevation)],
+                           by = "SAMP_ID",
+                           all.x = TRUE)
 
 samples_tree_meas[, samp_meas := paste0(SAMP_ID, "_", MEAS_YR_INI, "_", MEAS_YR_FIN)]
 samples_tree_meas <- samples_tree_meas[samp_meas %in% unique(samples_stand_meas$samp_meas),]
@@ -512,6 +574,19 @@ samples_tree_meas <- samples_tree_meas[samp_meas %in% unique(samples_stand_meas$
 
 saveRDS(samples_tree_meas, file.path(".", "data", "finalBC_tree_data_wide.rds"))
 saveRDS(samples_stand_meas, file.path(".", "data", "finalBC_stand_data.rds"))
+
+write.csv(stand_loc_longlat, 
+          file.path(".", "data", "sample_locations.csv"),
+          row.names = FALSE)
+
+
+
+
+
+
+
+
+
 
 
 
